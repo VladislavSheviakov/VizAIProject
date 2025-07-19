@@ -1,0 +1,16 @@
+# Игнорируем файлы конфигурации и ключи
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Логи
+*.log
+
+# VS Code
+.vscode/
+
+# Системные
+.DS_Store
+Thumbs.db
