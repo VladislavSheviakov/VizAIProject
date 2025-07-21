@@ -1,16 +1,33 @@
-# Игнорируем файлы конфигурации и ключи
-.env
-
 # Python
 __pycache__/
+*.py[cod]
 *.pyc
 
-# Логи
+# Envs
+.env
+*.env
+
+# VSCode & IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
 *.log
 
-# VS Code
-.vscode/
+# Local settings
+settings.json
 
-# Системные
+# Input / Output images
+input_images/
+output_images/
+images/
+*.jpg
+*.png
+
+# Jupyter
+*.ipynb_checkpoints/
+
+# System
 .DS_Store
 Thumbs.db
