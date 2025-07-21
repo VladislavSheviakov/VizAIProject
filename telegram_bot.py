@@ -36,6 +36,17 @@ class States(Enum):
 
 
 class ChatGPTTelegramBot:
+    def log_generation(self, user_id: int):
+        """
+        Записывает одну строку лога успешной генерации в logs/prompts_log.jsonl
+        """
+        log_path = os.path.join(self.logs_dir, "prompts_log.jsonl")
+        record = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "user_id": user_id
+        }
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
     """
     Telegram-бот для генерации промтов с помощью GPT-4o и обработки пользовательских команд.
     """
@@ -131,6 +142,12 @@ class ChatGPTTelegramBot:
             with open("prompts_log.jsonl", "r", encoding="utf-8") as f:
                 count = sum(1 for _ in f)
         await update.message.reply_text(f"📊 Сгенерировано промтов: {count}")
+        log_path = os.path.join(self.logs_dir, "prompts_log.jsonl")
+        count = 0
+        if os.path.exists(log_path):
+            with open(log_path, "r", encoding="utf-8") as f:
+                count = sum(1 for _ in f)
+        await update.message.reply_text(f"Всего успешных генераций: {count}")
 
     # === /cancel ===
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -196,6 +213,7 @@ class ChatGPTTelegramBot:
 
         await message.reply_text("📥 Скачиваю изображение...")
         try:
+            
             file = await context.bot.get_file(message.photo[-1].file_id)
             await file.download_to_drive(input_path)
 
