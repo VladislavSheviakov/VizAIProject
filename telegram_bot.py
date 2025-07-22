@@ -36,17 +36,20 @@ class States(Enum):
 
 
 class ChatGPTTelegramBot:
-    def log_generation(self, user_id: int):
-        """
-        Записывает одну строку лога успешной генерации в logs/prompts_log.jsonl
-        """
+    def log_generation(self, username, user_id, caption, input_image, prompt, output_image):
         log_path = os.path.join(self.logs_dir, "prompts_log.jsonl")
         record = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "user_id": user_id
+            "timestamp": datetime.now().isoformat(),
+            "username": username,
+            "user_id": user_id,
+            "caption": caption,
+            "prompt": prompt,
+            "output_image": output_image
         }
+        if input_image:
+            record["input_image"] = input_image
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
     """
     Telegram-бот для генерации промтов с помощью GPT-4o и обработки пользовательских команд.
     """
@@ -213,7 +216,6 @@ class ChatGPTTelegramBot:
 
         await message.reply_text("📥 Скачиваю изображение...")
         try:
-            
             file = await context.bot.get_file(message.photo[-1].file_id)
             await file.download_to_drive(input_path)
 
@@ -222,33 +224,27 @@ class ChatGPTTelegramBot:
             output_path = os.path.join(self.output_dir, output_filename)
             shutil.copy(input_path, output_path)
 
-            # 4) Кодируем в base64 из output_images
-            with open(output_path, "rb") as img_file:
-                base64_img = base64.b64encode(img_file.read()).decode("utf-8")
-
+            # 4) Отправляем запрос на локальный сервер
+            import requests
             await message.reply_text("🤖 GPT-4o генерирует промт...")
-
-            # GPT системный промт
-            system_prompt = (
-                "Ты визуальный помощник. Пользователь прислал фото и подпись. "
-                "Составь краткий промт для DALL·E 3: сохрани композицию, стиль и реализм. "
-                "Не добавляй новых деталей."
-            )
-
-            response = openai.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": [
-                        {"type": "text", "text": f"Комментарий: {caption}"},
-                        {"type": "image_url", "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_img}"}}
-                    ]}
-                ],
-                max_tokens=300
-            )
-
-            final_prompt = response.choices[0].message.content.strip()
+            server_url = "http://127.0.0.1:8080/generate"
+            payload = {
+                "user_id": user_id,
+                "username": update.effective_user.username,
+                "caption": caption,
+                "input_image": input_filename
+            }
+            response = requests.post(server_url, json=payload)
+            if response.ok:
+                data = response.json()
+                if data.get("success"):
+                    final_prompt = data["prompt"]
+                else:
+                    await message.reply_text(f"❌ Ошибка генерации: {data.get('error')}")
+                    return ConversationHandler.END
+            else:
+                await message.reply_text("❌ Сервер генерации недоступен.")
+                return ConversationHandler.END
 
             # 5) Сохраняем файл промта в output_images
             prompt_filename = f"{img_num}_{order_num_str}_prompt.txt"
@@ -256,20 +252,17 @@ class ChatGPTTelegramBot:
             with open(prompt_path, "w", encoding="utf-8") as f:
                 f.write(final_prompt)
 
-            # 6) Логируем в prompts_log.jsonl по новой структуре
-            log_id = f"{img_num}_{order_num_str}"
-            prompt_data = {
-                "log_id": log_id,
-                "timestamp": datetime.now().isoformat(),
-                "username": update.effective_user.username,
-                "user_id": user_id,
-                "input_image": os.path.join(self.input_dir, input_filename).replace("\\", "/"),
-                "prompt": final_prompt,
-                "caption": clean_caption,
-                "output_image": os.path.join(self.output_dir, output_filename).replace("\\", "/")
-            }
-            with open(prompts_log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(prompt_data, ensure_ascii=False) + "\n")
+            # 6) Логируем успешную генерацию
+            self.log_generation(
+                username=update.effective_user.username,
+                user_id=user_id,
+                caption=caption,
+                input_image=os.path.join(self.input_dir, input_filename).replace(
+                    "\\", "/") if input_filename else None,
+                prompt=final_prompt,
+                output_image=os.path.join(
+                    self.output_dir, output_filename).replace("\\", "/")
+            )
 
             self.logger.info(f"GPT-4o промт: {final_prompt}")
             await message.reply_text(f"✅ GPT-4o промт:\n{final_prompt}")
